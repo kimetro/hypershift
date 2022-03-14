@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"fmt"
 
+	prometheusoperatorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -23,9 +24,11 @@ import (
 	"github.com/go-logr/logr"
 	configv1 "github.com/openshift/api/config/v1"
 	imageregistryv1 "github.com/openshift/api/imageregistry/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	hyperv1 "github.com/openshift/hypershift/api/v1alpha1"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/cloud/azure"
 	cpomanifests "github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/manifests"
+	alerts "github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/alerts"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/crd"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/ingress"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/konnectivity"
@@ -33,6 +36,7 @@ import (
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/manifests"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/monitoring"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/namespaces"
+	networkoperator "github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/network"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/oapi"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/oauth"
 	"github.com/openshift/hypershift/control-plane-operator/hostedclusterconfigoperator/controllers/resources/olm"
@@ -123,6 +127,8 @@ func Setup(opts *operator.HostedClusterConfigOperatorConfig) error {
 		&configv1.ClusterOperator{},
 		&configv1.ClusterVersion{},
 		&apiregistrationv1.APIService{},
+		&operatorv1.Network{},
+		&prometheusoperatorv1.PrometheusRule{},
 	}
 	for _, r := range resourcesToWatch {
 		if err := c.Watch(&source.Kind{Type: r}, eventHandler()); err != nil {
@@ -136,46 +142,47 @@ func Setup(opts *operator.HostedClusterConfigOperatorConfig) error {
 }
 
 func (r *reconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
-	return ctrl.Result{}, r.reconcile(ctx)
-}
-
-func (r *reconciler) reconcile(ctx context.Context) error {
 	log := ctrl.LoggerFrom(ctx)
 	log.Info("Reconciling")
 
 	hcp := manifests.HostedControlPlane(r.hcpNamespace, r.hcpName)
 	if err := r.cpClient.Get(ctx, client.ObjectKeyFromObject(hcp), hcp); err != nil {
-		return fmt.Errorf("failed to get hosted control plane %s/%s: %w", r.hcpNamespace, r.hcpName, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get hosted control plane %s/%s: %w", r.hcpNamespace, r.hcpName, err)
 	}
 
-	if util.IsReconciliationPaused(log, hcp.Spec.PausedUntil) {
+	if isPaused, duration := util.IsReconciliationPaused(log, hcp.Spec.PausedUntil); isPaused {
 		log.Info("Reconciliation paused", "pausedUntil", *hcp.Spec.PausedUntil)
-		return nil
+		return ctrl.Result{RequeueAfter: duration}, nil
 	}
 	if r.operateOnReleaseImage != "" && r.operateOnReleaseImage != hcp.Spec.ReleaseImage {
 		log.Info("releaseImage is %s, but this operator is configured for %s, skipping reconciliation", hcp.Spec.ReleaseImage, r.operateOnReleaseImage)
-		return nil
+		return ctrl.Result{}, nil
 	}
 
 	globalConfig, err := globalconfig.ParseGlobalConfig(ctx, hcp.Spec.Configuration)
 	if err != nil {
-		return fmt.Errorf("failed to parse global config for control plane %s/%s: %w", r.hcpNamespace, r.hcpName, err)
+		return ctrl.Result{}, fmt.Errorf("failed to parse global config for control plane %s/%s: %w", r.hcpNamespace, r.hcpName, err)
 	}
 
 	pullSecret := manifests.PullSecret(hcp.Namespace)
 	if err := r.cpClient.Get(ctx, client.ObjectKeyFromObject(pullSecret), pullSecret); err != nil {
-		return fmt.Errorf("failed to get pull secret: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get pull secret: %w", err)
 	}
 
 	releaseImage, err := r.releaseProvider.Lookup(ctx, hcp.Spec.ReleaseImage, pullSecret.Data[corev1.DockerConfigJsonKey])
 	if err != nil {
-		return fmt.Errorf("failed to get lookup release image %s: %w", hcp.Spec.ReleaseImage, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get lookup release image %s: %w", hcp.Spec.ReleaseImage, err)
 	}
 
 	var errs []error
 	log.Info("reconciling guest cluster crds")
 	if err := r.reconcileCRDs(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("failed to reconcile crds: %w", err))
+	}
+
+	log.Info("reconciling guest cluster alert rules")
+	if err := r.reconcileGuestClusterAlertRules(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile guest cluster alert rules: %w", err))
 	}
 
 	log.Info("reconciling clusterversion")
@@ -203,13 +210,13 @@ func (r *reconciler) reconcile(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("failed to reconcile rbac: %w", err))
 	}
 
-	// IBMCloud platform should not be constantly reconciled as we allow customers to change initial deployment.
-	// Initial deployment handled by managed service wrapping hypershift
+	log.Info("reconciling registry config")
+	registryConfig := manifests.Registry()
+	// IBM Cloud platform allows managed service automation to initialize the registry config and then afterwards
+	// the client is in full control of the updates
 	if r.platformType != hyperv1.IBMCloudPlatform {
-		log.Info("reconciling registry config")
-		registryConfig := manifests.Registry()
 		if _, err := r.CreateOrUpdate(ctx, r.client, registryConfig, func() error {
-			registry.ReconcileRegistryConfig(registryConfig, r.platformType == hyperv1.NonePlatform)
+			registry.ReconcileRegistryConfig(registryConfig, r.platformType, hcp.Spec.InfrastructureAvailabilityPolicy)
 			return nil
 		}); err != nil {
 			errs = append(errs, fmt.Errorf("failed to reconcile imageregistry config: %w", err))
@@ -305,6 +312,15 @@ func (r *reconciler) reconcile(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("failed to reconcile kubeadmin password hash secret: %w", err))
 	}
 
+	log.Info("reconciling network operator")
+	networkOperator := networkoperator.NetworkOperator()
+	if _, err := r.CreateOrUpdate(ctx, r.client, networkOperator, func() error {
+		networkoperator.ReconcileNetworkOperator(networkOperator, hcp.Spec.NetworkType, hcp.Spec.Platform.Type)
+		return nil
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile network operator: %w", err))
+	}
+
 	log.Info("reconciling monitoring configuration")
 	monitoringConfig := manifests.MonitoringConfig()
 	if _, err := r.CreateOrUpdate(ctx, r.client, monitoringConfig, func() error {
@@ -330,6 +346,11 @@ func (r *reconciler) reconcile(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("failed to reconcile oauth serving cert CA bundle: %w", err))
 	}
 
+	log.Info("reconciling user cert CA bundle")
+	if err := r.reconcileUserCertCABundle(ctx, hcp); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile user cert CA bundle: %w", err))
+	}
+
 	log.Info("reconciling oauth browser client")
 	oauthBrowserClient := manifests.OAuthServerBrowserClient()
 	if _, err := r.CreateOrUpdate(ctx, r.client, oauthBrowserClient, func() error {
@@ -344,6 +365,21 @@ func (r *reconciler) reconcile(ctx context.Context) error {
 		return oauth.ReconcileChallengingClient(oauthChallengingClient, r.oauthAddress, r.oauthPort)
 	}); err != nil {
 		errs = append(errs, fmt.Errorf("failed to reconcile oauth challenging client: %w", err))
+	}
+
+	log.Info("reconciling oauth serving cert rbac")
+	oauthServingCertRole := manifests.OAuthServingCertRole()
+	if _, err := r.CreateOrUpdate(ctx, r.client, oauthServingCertRole, func() error {
+		return oauth.ReconcileOauthServingCertRole(oauthServingCertRole)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile oauth serving cert role: %w", err))
+	}
+
+	oauthServingCertRoleBinding := manifests.OAuthServingCertRoleBinding()
+	if _, err := r.CreateOrUpdate(ctx, r.client, oauthServingCertRoleBinding, func() error {
+		return oauth.ReconcileOauthServingCertRoleBinding(oauthServingCertRoleBinding)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile oauth serving cert rolebinding: %w", err))
 	}
 
 	log.Info("reconciling cloud credential secrets")
@@ -372,7 +408,7 @@ func (r *reconciler) reconcile(ctx context.Context) error {
 	log.Info("reconciling observed configuration")
 	errs = append(errs, r.reconcileObservedConfiguration(ctx, hcp)...)
 
-	return errors.NewAggregate(errs)
+	return ctrl.Result{}, errors.NewAggregate(errs)
 }
 
 func (r *reconciler) reconcileCRDs(ctx context.Context) error {
@@ -432,9 +468,9 @@ func (r *reconciler) reconcileConfig(ctx context.Context, hcp *hyperv1.HostedCon
 		errs = append(errs, fmt.Errorf("failed to reconcile ingress config: %w", err))
 	}
 
-	network := globalconfig.NetworkConfig()
-	if _, err := r.CreateOrUpdate(ctx, r.client, network, func() error {
-		globalconfig.ReconcileNetworkConfig(network, hcp, globalConfig)
+	networkConfig := globalconfig.NetworkConfig()
+	if _, err := r.CreateOrUpdate(ctx, r.client, networkConfig, func() error {
+		globalconfig.ReconcileNetworkConfig(networkConfig, hcp, globalConfig)
 		return nil
 	}); err != nil {
 		errs = append(errs, fmt.Errorf("failed to reconcile network config: %w", err))
@@ -442,7 +478,7 @@ func (r *reconciler) reconcileConfig(ctx context.Context, hcp *hyperv1.HostedCon
 
 	proxy := globalconfig.ProxyConfig()
 	if _, err := r.CreateOrUpdate(ctx, r.client, proxy, func() error {
-		globalconfig.ReconcileProxyConfig(proxy, hcp, globalConfig)
+		globalconfig.ReconcileProxyConfig(proxy, globalConfig)
 		return nil
 	}); err != nil {
 		errs = append(errs, fmt.Errorf("failed to reconcile proxy config: %w", err))
@@ -724,6 +760,23 @@ func (r *reconciler) reconcileOAuthServingCertCABundle(ctx context.Context, hcp 
 	return nil
 }
 
+func (r *reconciler) reconcileUserCertCABundle(ctx context.Context, hcp *hyperv1.HostedControlPlane) error {
+	if hcp.Spec.AdditionalTrustBundle != nil {
+		cpUserCAConfigMap := manifests.ControlPlaneUserCABundle(hcp.Namespace)
+		if err := r.cpClient.Get(ctx, client.ObjectKeyFromObject(cpUserCAConfigMap), cpUserCAConfigMap); err != nil {
+			return fmt.Errorf("cannot get AdditionalTrustBundle ConfigMap: %w", err)
+		}
+		userCAConfigMap := manifests.UserCABundle()
+		if _, err := r.CreateOrUpdate(ctx, r.client, userCAConfigMap, func() error {
+			userCAConfigMap.Data = cpUserCAConfigMap.Data
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to reconcile the %s ConfigMap: %w", client.ObjectKeyFromObject(userCAConfigMap), err)
+		}
+	}
+	return nil
+}
+
 const awsCredentialsTemplate = `[default]
 role_arn = %s
 web_identity_token_file = /var/run/secrets/openshift/serviceaccount/token
@@ -957,4 +1010,16 @@ func (r *reconciler) reconcileCloudConfig(ctx context.Context, hcp *hyperv1.Host
 	}
 
 	return nil
+}
+
+func (r *reconciler) reconcileGuestClusterAlertRules(ctx context.Context) error {
+	var errs []error
+	apiUsageRule := manifests.ApiUsageRule()
+	if _, err := r.CreateOrUpdate(ctx, r.client, apiUsageRule, func() error {
+		return alerts.ReconcileApiUsageRule(apiUsageRule)
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("failed to reconcile guest cluster api usage rule: %w", err))
+	}
+
+	return errors.NewAggregate(errs)
 }

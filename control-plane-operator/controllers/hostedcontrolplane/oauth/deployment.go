@@ -56,9 +56,10 @@ func ReconcileDeployment(ctx context.Context, client client.Client, deployment *
 	if mainContainer != nil {
 		deploymentConfig.SetContainerResourcesIfPresent(mainContainer)
 	}
-
-	deployment.Spec.Selector = &metav1.LabelSelector{
-		MatchLabels: oauthLabels(),
+	if deployment.Spec.Selector == nil {
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: oauthLabels(),
+		}
 	}
 	deployment.Spec.Strategy.Type = appsv1.RollingUpdateDeploymentStrategyType
 	maxSurge := intstr.FromInt(3)
@@ -161,6 +162,7 @@ func oauthVolumeKubeconfig() *corev1.Volume {
 
 func buildOAuthVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
 	}
 }
@@ -172,6 +174,7 @@ func oauthVolumeServingCert() *corev1.Volume {
 
 func buildOAuthVolumeServingCert(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.OpenShiftOAuthServerCert("").Name,
 	}
 }
@@ -182,6 +185,7 @@ func oauthVolumeSessionSecret() *corev1.Volume {
 }
 func buildOAuthVolumeSessionSecret(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.OAuthServerServiceSessionSecret("").Name,
 	}
 }
@@ -193,6 +197,7 @@ func oauthVolumeErrorTemplate() *corev1.Volume {
 
 func buildOAuthVolumeErrorTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.OAuthServerDefaultErrorTemplateSecret("").Name,
 	}
 }
@@ -205,6 +210,7 @@ func oauthVolumeLoginTemplate() *corev1.Volume {
 
 func buildOAuthVolumeLoginTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.OAuthServerDefaultLoginTemplateSecret("").Name,
 	}
 }
@@ -217,6 +223,7 @@ func oauthVolumeProvidersTemplate() *corev1.Volume {
 
 func buildOAuthVolumeProvidersTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.OAuthServerDefaultProviderSelectionTemplateSecret("").Name,
 	}
 }

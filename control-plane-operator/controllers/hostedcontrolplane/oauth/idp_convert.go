@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/net"
 	ctrl "sigs.k8s.io/controller-runtime"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
-
+	"k8s.io/utils/pointer"
 	configv1 "github.com/openshift/api/config/v1"
 	osinv1 "github.com/openshift/api/osin/v1"
 
@@ -71,6 +71,7 @@ func (i *IDPVolumeMountInfo) SecretPath(index int, secretName, field, key string
 	}
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = secretName
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 	i.Volumes = append(i.Volumes, v)
 	i.VolumeMounts[i.Container][v.Name] = fmt.Sprintf("%s/idp_secret_%d_%s", IDPVolumePathPrefix, index, field)
 	return path.Join(i.VolumeMounts[i.Container][v.Name], key)
@@ -342,23 +343,26 @@ func convertProviderConfigToIDPData(
 		}
 		data.provider = openIDProvider
 
-		// openshift CR validating in kube-apiserver does not allow
-		// challenge-redirecting IdPs to be configured with OIDC so it is safe
-		// to allow challenge-issuing flow if it's available on the OIDC side
-		challengeFlowsAllowed, err := checkOIDCPasswordGrantFlow(
-			ctx,
-			kclient,
-			openIDProvider.URLs.Token,
-			openIDConfig.ClientID,
-			namespace,
-			openIDConfig.CA,
-			openIDConfig.ClientSecret,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error attempting password grant flow: %v", err)
+		if configOverride.Challenge != nil {
+			data.challenge = *configOverride.Challenge
+		} else {
+			// openshift CR validating in kube-apiserver does not allow
+			// challenge-redirecting IdPs to be configured with OIDC so it is safe
+			// to allow challenge-issuing flow if it's available on the OIDC side
+			challengeFlowsAllowed, err := checkOIDCPasswordGrantFlow(
+				ctx,
+				kclient,
+				openIDProvider.URLs.Token,
+				openIDConfig.ClientID,
+				namespace,
+				openIDConfig.CA,
+				openIDConfig.ClientSecret,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("error attempting password grant flow: %v", err)
+			}
+			data.challenge = challengeFlowsAllowed
 		}
-		data.challenge = challengeFlowsAllowed
-		data.provider = openIDProvider
 	case configv1.IdentityProviderTypeRequestHeader:
 		requestHeaderConfig := providerConfig.RequestHeader
 		if requestHeaderConfig == nil {

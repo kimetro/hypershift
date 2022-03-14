@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 	"path"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,7 +35,7 @@ var (
 	}
 )
 
-func ReconcileDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef, config config.DeploymentConfig, image string, featureGates []string, policy configv1.ConfigMapNameReference, availabilityProberImage string, apiPort *int32) error {
+func ReconcileDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef, config config.DeploymentConfig, image string, featureGates []string, policy configv1.ConfigMapNameReference, availabilityProberImage string, apiPort *int32, ciphers []string, tlsVersion string, disableProfiling bool) error {
 	ownerRef.ApplyTo(deployment)
 
 	// preserve existing resource requirements for main scheduler container
@@ -45,10 +46,14 @@ func ReconcileDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef
 
 	maxSurge := intstr.FromInt(3)
 	maxUnavailable := intstr.FromInt(1)
-	deployment.Spec = appsv1.DeploymentSpec{
-		Selector: &metav1.LabelSelector{
+	selector := deployment.Spec.Selector
+	if deployment.Spec.Selector == nil {
+		selector = &metav1.LabelSelector{
 			MatchLabels: schedulerLabels,
-		},
+		}
+	}
+	deployment.Spec = appsv1.DeploymentSpec{
+		Selector: selector,
 		Strategy: appsv1.DeploymentStrategy{
 			Type: appsv1.RollingUpdateDeploymentStrategyType,
 			RollingUpdate: &appsv1.RollingUpdateDeployment{
@@ -63,7 +68,7 @@ func ReconcileDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef
 			Spec: corev1.PodSpec{
 				AutomountServiceAccountToken: pointer.BoolPtr(false),
 				Containers: []corev1.Container{
-					util.BuildContainer(schedulerContainerMain(), buildSchedulerContainerMain(image, deployment.Namespace, featureGates, policy)),
+					util.BuildContainer(schedulerContainerMain(), buildSchedulerContainerMain(image, deployment.Namespace, featureGates, policy, ciphers, tlsVersion, disableProfiling)),
 				},
 				Volumes: []corev1.Volume{
 					util.BuildVolume(schedulerVolumeConfig(), buildSchedulerVolumeConfig),
@@ -84,7 +89,7 @@ func schedulerContainerMain() *corev1.Container {
 	}
 }
 
-func buildSchedulerContainerMain(image, namespace string, featureGates []string, policy configv1.ConfigMapNameReference) func(*corev1.Container) {
+func buildSchedulerContainerMain(image, namespace string, featureGates []string, policy configv1.ConfigMapNameReference, cipherSuites []string, tlsVersion string, disableProfiling bool) func(*corev1.Container) {
 	return func(c *corev1.Container) {
 		kubeConfigPath := path.Join(volumeMounts.Path(schedulerContainerMain().Name, schedulerVolumeKubeconfig().Name), kas.KubeconfigKey)
 		configPath := path.Join(volumeMounts.Path(schedulerContainerMain().Name, schedulerVolumeConfig().Name), KubeSchedulerConfigKey)
@@ -108,6 +113,15 @@ func buildSchedulerContainerMain(image, namespace string, featureGates []string,
 		if len(policy.Name) > 0 {
 			c.Args = append(c.Args, fmt.Sprintf("--policy-config-map=%s", policy.Name))
 			c.Args = append(c.Args, fmt.Sprintf("--policy-config-namespace=%s", namespace))
+		}
+		if len(cipherSuites) != 0 {
+			c.Args = append(c.Args, fmt.Sprintf("--tls-cipher-suites=%s", strings.Join(cipherSuites, ",")))
+		}
+		if tlsVersion != "" {
+			c.Args = append(c.Args, fmt.Sprintf("--tls-min-version=%s", tlsVersion))
+		}
+		if disableProfiling {
+			c.Args = append(c.Args, "--profiling=false")
 		}
 		c.VolumeMounts = volumeMounts.ContainerMounts(c.Name)
 	}
@@ -142,6 +156,7 @@ func schedulerVolumeKubeconfig() *corev1.Volume {
 
 func buildSchedulerVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
 	}
 }

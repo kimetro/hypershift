@@ -12,12 +12,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/common"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/kas"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/manifests"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/pki"
 	"github.com/openshift/hypershift/support/config"
+	"github.com/openshift/hypershift/support/proxy"
 	"github.com/openshift/hypershift/support/util"
 )
 
@@ -145,7 +147,7 @@ var (
 	}
 )
 
-func ReconcileDeployment(deployment *appsv1.Deployment, image, hcpName, openShiftVersion, kubeVersion string, ownerRef config.OwnerRef, config *config.DeploymentConfig, availabilityProberImage string, enableCIDebugOutput bool, platformType hyperv1.PlatformType, apiInternalPort *int32, konnectivityAddress string, konnectivityPort int32, oauthAddress string, oauthPort int32, releaseImage string) error {
+func ReconcileDeployment(deployment *appsv1.Deployment, image, hcpName, openShiftVersion, kubeVersion string, ownerRef config.OwnerRef, config *config.DeploymentConfig, availabilityProberImage string, enableCIDebugOutput bool, platformType hyperv1.PlatformType, apiInternalPort *int32, konnectivityAddress string, konnectivityPort int32, oauthAddress string, oauthPort int32, releaseImage string, additionalTrustBundle *corev1.LocalObjectReference) error {
 	ownerRef.ApplyTo(deployment)
 	deployment.Spec = appsv1.DeploymentSpec{
 		Selector: &metav1.LabelSelector{
@@ -171,8 +173,19 @@ func ReconcileDeployment(deployment *appsv1.Deployment, image, hcpName, openShif
 			},
 		},
 	}
+	if additionalTrustBundle != nil {
+		util.DeploymentAddTrustBundleVolume(additionalTrustBundle, deployment)
+	}
+
 	config.ApplyTo(deployment)
-	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, apiInternalPort), availabilityProberImage, &deployment.Spec.Template.Spec)
+	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, apiInternalPort), availabilityProberImage, &deployment.Spec.Template.Spec, func(o *util.AvailabilityProberOpts) {
+		o.KubeconfigVolumeName = "kubeconfig"
+		o.RequiredAPIs = []schema.GroupVersionKind{
+			{Group: "imageregistry.operator.openshift.io", Version: "v1", Kind: "Config"},
+			{Group: "config.openshift.io", Version: "v1", Kind: "ClusterOperator"},
+			{Group: "config.openshift.io", Version: "v1", Kind: "ClusterVersion"},
+		}
+	})
 	return nil
 }
 
@@ -203,7 +216,7 @@ func hccVolumeClusterSignerCA() *corev1.Volume {
 func buildHCCContainerMain(image, hcpName, openShiftVersion, kubeVersion string, enableCIDebugOutput bool, platformType hyperv1.PlatformType, konnectivityAddress string, konnectivityPort int32, oauthAddress string, oauthPort int32, releaseImage string) func(c *corev1.Container) {
 	return func(c *corev1.Container) {
 		c.Image = image
-		c.ImagePullPolicy = corev1.PullAlways
+		c.ImagePullPolicy = corev1.PullIfNotPresent
 		c.Command = []string{
 			"/usr/bin/control-plane-operator",
 			"hosted-cluster-config-operator",
@@ -242,6 +255,7 @@ func buildHCCContainerMain(image, hcpName, openShiftVersion, kubeVersion string,
 				Value: releaseImage,
 			},
 		}
+		proxy.SetEnvVars(&c.Env)
 		c.VolumeMounts = volumeMounts.ContainerMounts(c.Name)
 	}
 }
@@ -249,6 +263,7 @@ func buildHCCContainerMain(image, hcpName, openShiftVersion, kubeVersion string,
 func buildHCCVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -261,5 +276,6 @@ func buildHCCVolumeCombinedCA(v *corev1.Volume) {
 func buildHCCClusterSignerCA(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.ClusterSignerCASecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }

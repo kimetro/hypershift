@@ -3,6 +3,7 @@ package kas
 import (
 	"github.com/openshift/hypershift/support/util"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 )
 
 const portierisPort = 8000
@@ -30,7 +31,7 @@ func kasContainerPortieries() *corev1.Container {
 func buildKASContainerPortieries(image string) func(c *corev1.Container) {
 	return func(c *corev1.Container) {
 		c.Image = image
-		c.ImagePullPolicy = corev1.PullAlways
+		c.ImagePullPolicy = corev1.PullIfNotPresent
 		c.Command = []string{
 			"/portieris",
 		}
@@ -59,5 +60,6 @@ func kasVolumePortierisCerts() *corev1.Volume {
 func buildKASVolumePortierisCerts(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: v.Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }

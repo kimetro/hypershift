@@ -3,6 +3,7 @@ package kcm
 import (
 	"fmt"
 	"path"
+	"strings"
 
 	hyperv1 "github.com/openshift/hypershift/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -16,6 +17,7 @@ import (
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/kas"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/manifests"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/pki"
+	"github.com/openshift/hypershift/support/proxy"
 	"github.com/openshift/hypershift/support/util"
 )
 
@@ -63,8 +65,10 @@ func ReconcileDeployment(deployment *appsv1.Deployment, config, servingCA *corev
 		p.DeploymentConfig.SetContainerResourcesIfPresent(mainContainer)
 	}
 
-	deployment.Spec.Selector = &metav1.LabelSelector{
-		MatchLabels: kcmLabels(),
+	if deployment.Spec.Selector == nil {
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: kcmLabels(),
+		}
 	}
 	deployment.Spec.Strategy.Type = appsv1.RollingUpdateDeploymentStrategyType
 	maxSurge := intstr.FromInt(3)
@@ -139,6 +143,7 @@ func buildKCMContainerMain(image string, args []string, port int32) func(c *core
 				Protocol:      corev1.ProtocolTCP,
 			},
 		}
+		proxy.SetEnvVars(&c.Env)
 	}
 }
 
@@ -187,6 +192,7 @@ func kcmVolumeServiceSigner() *corev1.Volume {
 func buildKCMVolumeServiceSigner(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.ServiceAccountSigningKeySecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -209,6 +215,7 @@ func kcmVolumeClusterSigner() *corev1.Volume {
 func buildKCMVolumeClusterSigner(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.ClusterSignerCASecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -221,6 +228,7 @@ func kcmVolumeKubeconfig() *corev1.Volume {
 func buildKCMVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -257,6 +265,7 @@ func buildKCMVolumeServerCert(v *corev1.Volume) {
 	}
 	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 	v.Secret.SecretName = manifests.KCMServerCertSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 type serviceCAVolumeBuilder string
@@ -299,6 +308,15 @@ func kcmArgs(p *KubeControllerManagerParams) []string {
 	}
 	if p.CloudProvider != "" {
 		args = append(args, fmt.Sprintf("--cloud-provider=%s", p.CloudProvider))
+	}
+	if p.MinTLSVersion() != "" {
+		args = append(args, fmt.Sprintf("--tls-min-version=%s", p.MinTLSVersion()))
+	}
+	if len(p.CipherSuites()) != 0 {
+		args = append(args, fmt.Sprintf("--tls-cipher-suites=%s", strings.Join(p.CipherSuites(), ",")))
+	}
+	if p.DisableProfiling {
+		args = append(args, "--profiling=false")
 	}
 	args = append(args, []string{
 		fmt.Sprintf("--cert-dir=%s", cpath(kcmVolumeCertDir().Name, "")),

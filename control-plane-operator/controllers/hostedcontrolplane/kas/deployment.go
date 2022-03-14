@@ -17,6 +17,7 @@ import (
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/cloud/azure"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/manifests"
 	"github.com/openshift/hypershift/support/config"
+	"github.com/openshift/hypershift/support/proxy"
 	"github.com/openshift/hypershift/support/util"
 )
 
@@ -95,6 +96,8 @@ func ReconcileKubeAPIServerDeployment(deployment *appsv1.Deployment,
 	aesCBCBackupKey []byte,
 	etcdMgmtType hyperv1.EtcdManagementType,
 	port int32,
+	podCIDR string,
+	serviceCIDR string,
 ) error {
 
 	configBytes, ok := config.Data[KubeAPIServerConfigKey]
@@ -112,9 +115,10 @@ func ReconcileKubeAPIServerDeployment(deployment *appsv1.Deployment,
 	if mainContainer != nil {
 		deploymentConfig.SetContainerResourcesIfPresent(mainContainer)
 	}
-
-	deployment.Spec.Selector = &metav1.LabelSelector{
-		MatchLabels: kasLabels(),
+	if deployment.Spec.Selector == nil {
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: kasLabels(),
+		}
 	}
 	deployment.Spec.Strategy = appsv1.DeploymentStrategy{
 		Type: appsv1.RollingUpdateDeploymentStrategyType,
@@ -145,7 +149,7 @@ func ReconcileKubeAPIServerDeployment(deployment *appsv1.Deployment,
 			},
 			Containers: []corev1.Container{
 				util.BuildContainer(kasContainerApplyBootstrap(), buildKASContainerApplyBootstrap(images.CLI)),
-				util.BuildContainer(kasContainerMain(), buildKASContainerMain(images.HyperKube, port)),
+				util.BuildContainer(kasContainerMain(), buildKASContainerMain(images.HyperKube, port, podCIDR, serviceCIDR)),
 			},
 			Volumes: []corev1.Volume{
 				util.BuildVolume(kasVolumeBootstrapManifests(), buildKASVolumeBootstrapManifests),
@@ -312,7 +316,7 @@ func kasContainerMain() *corev1.Container {
 	}
 }
 
-func buildKASContainerMain(image string, port int32) func(c *corev1.Container) {
+func buildKASContainerMain(image string, port int32, podCIDR, serviceCIDR string) func(c *corev1.Container) {
 	return func(c *corev1.Container) {
 		c.Image = image
 		c.TerminationMessagePolicy = corev1.TerminationMessageReadFile
@@ -336,6 +340,13 @@ func buildKASContainerMain(image string, port int32) func(c *corev1.Container) {
 			Name:      "HOST_IP",
 			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}},
 		}}
+
+		// We have to exempt the pod and service CIDR, otherwise the proxy will get respected by the transport inside
+		// the the egress transport and that breaks the egress selection/konnektivity usage.
+		// Using a CIDR is not supported by Go's default ProxyFunc, but Kube uses a custom one by default that does support it:
+		// https://github.com/kubernetes/kubernetes/blob/ab13c85316015cf9f115e29923ba9740bd1564fd/staging/src/k8s.io/apimachinery/pkg/util/net/http.go#L112-L114
+		proxy.SetEnvVars(&c.Env, podCIDR, serviceCIDR)
+
 		c.WorkingDir = volumeMounts.Path(c.Name, kasVolumeWorkLogs().Name)
 		c.VolumeMounts = volumeMounts.ContainerMounts(c.Name)
 		c.Ports = []corev1.ContainerPort{
@@ -666,6 +677,7 @@ func applyNamedCertificateMounts(certs []configv1.APIServerNamedServingCert, spe
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: namedCert.ServingCertificate.Name,
+					DefaultMode: pointer.Int32Ptr(416),
 				},
 			},
 		})
@@ -741,5 +753,6 @@ func kasVolumeKubeconfig() *corev1.Volume {
 func buildKASVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }

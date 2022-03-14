@@ -100,6 +100,26 @@ and InfrastructureAvailabilityPolicy.</p>
 </tr>
 <tr>
 <td>
+<code>clusterID</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ClusterID uniquely identifies this cluster. This is expected to be
+an RFC4122 UUID value (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx in
+hexadecimal values).
+As with a Kubernetes metadata.uid, this ID uniquely identifies this
+cluster in space and time.
+This value identifies the cluster in metrics pushed to telemetry and
+metrics produced by the control plane operators. If a value is not
+specified, an ID is generated. After initial creation, the value is
+immutable.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>infraID</code></br>
 <em>
 string
@@ -333,6 +353,21 @@ name that corresponds to the constant AuditWebhookKubeconfigKey.</p>
 <em>(Optional)</em>
 <p>ImageContentSources specifies image mirrors that can be used by cluster
 nodes to pull content.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>additionalTrustBundle</code></br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#localobjectreference-v1-core">
+Kubernetes core/v1.LocalObjectReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AdditionalTrustBundle is a reference to a ConfigMap containing a
+PEM-encoded X.509 certificate bundle that will be added to the hosted controlplane and nodes</p>
 </td>
 </tr>
 <tr>
@@ -2019,6 +2054,10 @@ HostedCluster is available to handle ignition requests.</p>
 <td></td>
 </tr><tr><td><p>&#34;KubeAPIServerAvailable&#34;</p></td>
 <td></td>
+</tr><tr><td><p>&#34;OIDCConfigurationInvalid&#34;</p></td>
+<td><p>OIDCConfigurationInvalid indicates if an AWS cluster&rsquo;s OIDC condition is
+detected as invalid.</p>
+</td>
 </tr><tr><td><p>&#34;ReconciliationPaused&#34;</p></td>
 <td><p>ReconciliationPaused indicates if reconciliation of the hostedcluster is
 paused.</p>
@@ -2299,6 +2338,26 @@ and InfrastructureAvailabilityPolicy.</p>
 </tr>
 <tr>
 <td>
+<code>clusterID</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ClusterID uniquely identifies this cluster. This is expected to be
+an RFC4122 UUID value (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx in
+hexadecimal values).
+As with a Kubernetes metadata.uid, this ID uniquely identifies this
+cluster in space and time.
+This value identifies the cluster in metrics pushed to telemetry and
+metrics produced by the control plane operators. If a value is not
+specified, an ID is generated. After initial creation, the value is
+immutable.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>infraID</code></br>
 <em>
 string
@@ -2532,6 +2591,21 @@ name that corresponds to the constant AuditWebhookKubeconfigKey.</p>
 <em>(Optional)</em>
 <p>ImageContentSources specifies image mirrors that can be used by cluster
 nodes to pull content.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>additionalTrustBundle</code></br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#localobjectreference-v1-core">
+Kubernetes core/v1.LocalObjectReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AdditionalTrustBundle is a reference to a ConfigMap containing a
+PEM-encoded X.509 certificate bundle that will be added to the hosted controlplane and nodes</p>
 </td>
 </tr>
 <tr>
@@ -2798,6 +2872,21 @@ Kubernetes core/v1.LocalObjectReference
 </tr>
 <tr>
 <td>
+<code>clusterID</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ClusterID is the unique id that identifies the cluster externally.
+Making it optional here allows us to keep compatibility with previous
+versions of the control-plane-operator that have no knowledge of this
+field.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>infraID</code></br>
 <em>
 string
@@ -2995,6 +3084,20 @@ ClusterConfiguration
 <td>
 <em>(Optional)</em>
 <p>ImageContentSources lists sources/repositories for the release-image content.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>additionalTrustBundle</code></br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#localobjectreference-v1-core">
+Kubernetes core/v1.LocalObjectReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AdditionalTrustBundle references a ConfigMap containing a PEM-encoded X.509 certificate bundle</p>
 </td>
 </tr>
 <tr>

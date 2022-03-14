@@ -13,8 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	//TODO: Switch to k8s.io/api/policy/v1 when all management clusters at 1.21+ OR 4.8_openshift+
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
@@ -122,7 +121,7 @@ func buildEtcdContainer(p *EtcdParams, namespace string) func(c *corev1.Containe
 		initialCluster := strings.Join(members, ",")
 
 		c.Image = p.EtcdImage
-		c.ImagePullPolicy = corev1.PullAlways
+		c.ImagePullPolicy = corev1.PullIfNotPresent
 		c.Command = []string{"/bin/sh", "-c", script}
 		c.VolumeMounts = []corev1.VolumeMount{
 			{
@@ -253,7 +252,7 @@ func ReconcileClientService(service *corev1.Service, ownerRef config.OwnerRef) e
 // ReconcileServiceMonitor
 // TODO: Exposing the client cert to monitoring isn't great, but metrics
 // TLS can't yet be independently configured. See: https://github.com/etcd-io/etcd/pull/10504
-func ReconcileServiceMonitor(sm *prometheusoperatorv1.ServiceMonitor, ownerRef config.OwnerRef) error {
+func ReconcileServiceMonitor(sm *prometheusoperatorv1.ServiceMonitor, ownerRef config.OwnerRef, clusterID string) error {
 	ownerRef.ApplyTo(sm)
 
 	sm.Spec.Selector.MatchLabels = etcdPodSelector()
@@ -295,10 +294,12 @@ func ReconcileServiceMonitor(sm *prometheusoperatorv1.ServiceMonitor, ownerRef c
 		},
 	}
 
+	util.ApplyClusterIDLabel(&sm.Spec.Endpoints[0], clusterID)
+
 	return nil
 }
 
-func ReconcilePodDisruptionBudget(pdb *policyv1beta1.PodDisruptionBudget, p *EtcdParams) error {
+func ReconcilePodDisruptionBudget(pdb *policyv1.PodDisruptionBudget, p *EtcdParams) error {
 	if pdb.CreationTimestamp.IsZero() {
 		pdb.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: etcdPodSelector(),

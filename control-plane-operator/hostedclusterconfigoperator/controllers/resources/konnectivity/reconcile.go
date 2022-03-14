@@ -84,7 +84,7 @@ func buildKonnectivityWorkerAgentContainer(image, host string, port int32) func(
 	}
 	return func(c *corev1.Container) {
 		c.Image = image
-		c.ImagePullPolicy = corev1.PullAlways
+		c.ImagePullPolicy = corev1.PullIfNotPresent
 		c.Command = []string{
 			"/usr/bin/proxy-agent",
 		}
@@ -119,6 +119,7 @@ func buildKonnectivityWorkerAgentContainer(image, host string, port int32) func(
 func buildKonnectivityVolumeWorkerAgentCerts(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.KonnectivityAgentSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 

@@ -2,11 +2,13 @@ package ingressoperator
 
 import (
 	"fmt"
+
 	hyperv1 "github.com/openshift/hypershift/api/v1alpha1"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/kas"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/konnectivity"
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/manifests"
 	"github.com/openshift/hypershift/support/config"
+	"github.com/openshift/hypershift/support/proxy"
 	"github.com/openshift/hypershift/support/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -129,13 +131,9 @@ func ReconcileDeployment(dep *appsv1.Deployment, params Params, apiPort *int32) 
 				Name:  "HTTPS_PROXY",
 				Value: fmt.Sprintf("socks5://127.0.0.1:%d", konnectivity.KonnectivityServerLocalPort),
 			},
-			// cloud provider APIs need to be included since the ingress operator reaches out to them to provision
-			// DNS domains. The API list can be found below:
-			// AWS: https://docs.aws.amazon.com/general/latest/gr/rande.html#regional-endpoints
-			// AZURE: https://docs.microsoft.com/en-us/rest/api/azure/#how-to-call-azure-rest-apis-with-curl
 			{
 				Name:  "NO_PROXY",
-				Value: fmt.Sprintf(".amazonaws.com,.microsoftonline.com,.azure.com,%s", manifests.KubeAPIServerService("").Name),
+				Value: manifests.KubeAPIServerService("").Name,
 			},
 		},
 		Name:            ingressOperatorContainerName,
@@ -163,12 +161,12 @@ func ReconcileDeployment(dep *appsv1.Deployment, params Params, apiPort *int32) 
 		)
 		dep.Spec.Template.Spec.Containers = append(dep.Spec.Template.Spec.Containers, corev1.Container{
 			Name:    "token-minter",
-			Command: []string{"/usr/bin/token-minter"},
+			Command: []string{"/usr/bin/control-plane-operator", "token-minter"},
 			Args: []string{
-				"-service-account-namespace=openshift-ingress-operator",
-				"-service-account-name=ingress-operator",
-				"-token-file=/var/run/secrets/openshift/serviceaccount/token",
-				"-kubeconfig=/etc/kubernetes/kubeconfig",
+				"--service-account-namespace=openshift-ingress-operator",
+				"--service-account-name=ingress-operator",
+				"--token-file=/var/run/secrets/openshift/serviceaccount/token",
+				"--kubeconfig=/etc/kubernetes/kubeconfig",
 			},
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
@@ -202,10 +200,10 @@ func ReconcileDeployment(dep *appsv1.Deployment, params Params, apiPort *int32) 
 }
 
 func ingressOperatorSocks5ProxyContainer(socks5ProxyImage string) corev1.Container {
-	return corev1.Container{
+	c := corev1.Container{
 		Name:    socks5ProxyContainerName,
 		Image:   socks5ProxyImage,
-		Command: []string{"/usr/bin/konnectivity-socks5-proxy"},
+		Command: []string{"/usr/bin/control-plane-operator", "konnectivity-socks5-proxy"},
 		Args:    []string{"run"},
 		Env: []corev1.EnvVar{{
 			Name:  "KUBECONFIG",
@@ -222,4 +220,6 @@ func ingressOperatorSocks5ProxyContainer(socks5ProxyImage string) corev1.Contain
 			{Name: "konnectivity-proxy-cert", MountPath: "/etc/konnectivity-proxy-tls"},
 		},
 	}
+	proxy.SetEnvVars(&c.Env)
+	return c
 }

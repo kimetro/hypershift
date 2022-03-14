@@ -59,8 +59,10 @@ func ReconcileDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef
 		MaxSurge:       &maxSurge,
 		MaxUnavailable: &maxUnavailable,
 	}
-	deployment.Spec.Selector = &metav1.LabelSelector{
-		MatchLabels: openShiftControllerManagerLabels(),
+	if deployment.Spec.Selector == nil {
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: openShiftControllerManagerLabels(),
+		}
 	}
 	deployment.Spec.Template.ObjectMeta.Labels = openShiftControllerManagerLabels()
 	deployment.Spec.Template.ObjectMeta.Annotations = map[string]string{
@@ -125,6 +127,7 @@ func ocmVolumeKubeconfig() *corev1.Volume {
 func buildOCMVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.KASServiceKubeconfigSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func ocmVolumeServingCert() *corev1.Volume {
@@ -136,4 +139,5 @@ func ocmVolumeServingCert() *corev1.Volume {
 func buildOCMVolumeServingCert(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.OpenShiftControllerManagerCertSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }

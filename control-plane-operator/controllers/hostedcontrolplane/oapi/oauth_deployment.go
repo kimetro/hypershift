@@ -8,8 +8,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	//TODO: Switch to k8s.io/api/policy/v1 when all management clusters at 1.21+ OR 4.8_openshift+
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -63,8 +62,10 @@ func ReconcileOAuthAPIServerDeployment(deployment *appsv1.Deployment, ownerRef c
 			MaxSurge:       &maxSurge,
 		},
 	}
-	deployment.Spec.Selector = &metav1.LabelSelector{
-		MatchLabels: openShiftOAuthAPIServerLabels(),
+	if deployment.Spec.Selector == nil {
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: openShiftOAuthAPIServerLabels(),
+		}
 	}
 	deployment.Spec.Template.ObjectMeta.Labels = openShiftOAuthAPIServerLabels()
 	deployment.Spec.Template.Spec = corev1.PodSpec{
@@ -166,6 +167,7 @@ func oauthVolumeKubeconfig() *corev1.Volume {
 func buildOAuthVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.KASServiceKubeconfigSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func oauthVolumeAggregatorClientCA() *corev1.Volume {
@@ -177,6 +179,7 @@ func oauthVolumeAggregatorClientCA() *corev1.Volume {
 func buildOAuthVolumeAggregatorClientCA(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.RootCASecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func oauthVolumeEtcdClientCA() *corev1.Volume {
@@ -188,6 +191,7 @@ func oauthVolumeEtcdClientCA() *corev1.Volume {
 func buildOAuthVolumeEtcdClientCA(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.RootCASecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func oauthVolumeServingCA() *corev1.Volume {
@@ -199,6 +203,7 @@ func oauthVolumeServingCA() *corev1.Volume {
 func buildOAuthVolumeServingCA(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.RootCASecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func oauthVolumeServingCert() *corev1.Volume {
@@ -210,6 +215,7 @@ func oauthVolumeServingCert() *corev1.Volume {
 func buildOAuthVolumeServingCert(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.OpenShiftOAuthAPIServerCertSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func oauthVolumeEtcdClientCert() *corev1.Volume {
@@ -221,9 +227,10 @@ func oauthVolumeEtcdClientCert() *corev1.Volume {
 func buildOAuthVolumeEtcdClientCert(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.EtcdClientSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
-func ReconcileOpenShiftOAuthAPIServerPodDisruptionBudget(pdb *policyv1beta1.PodDisruptionBudget, p *OAuthDeploymentParams) error {
+func ReconcileOpenShiftOAuthAPIServerPodDisruptionBudget(pdb *policyv1.PodDisruptionBudget, p *OAuthDeploymentParams) error {
 	if pdb.CreationTimestamp.IsZero() {
 		pdb.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: openShiftOAuthAPIServerLabels(),

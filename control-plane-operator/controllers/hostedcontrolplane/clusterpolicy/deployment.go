@@ -44,8 +44,10 @@ func ReconcileDeployment(deployment *appsv1.Deployment, ownerRef config.OwnerRef
 		MaxSurge:       &maxSurge,
 		MaxUnavailable: &maxUnavailable,
 	}
-	deployment.Spec.Selector = &metav1.LabelSelector{
-		MatchLabels: clusterPolicyControllerLabels,
+	if deployment.Spec.Selector == nil {
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: clusterPolicyControllerLabels,
+		}
 	}
 	deployment.Spec.Template.ObjectMeta.Labels = clusterPolicyControllerLabels
 	deployment.Spec.Template.Spec.Containers = []corev1.Container{
@@ -112,6 +114,7 @@ func cpcVolumeKubeconfig() *corev1.Volume {
 func buildCPCVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.KASServiceKubeconfigSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func cpcVolumeServingCert() *corev1.Volume {
@@ -123,4 +126,5 @@ func cpcVolumeServingCert() *corev1.Volume {
 func buildCPCVolumeServingCert(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.ClusterPolicyControllerCertSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }

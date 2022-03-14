@@ -89,6 +89,11 @@ const (
 
 	// ExternalDNSHostnameAnnotation is the annotation external-dns uses to register DNS name for different HCP services.
 	ExternalDNSHostnameAnnotation = "external-dns.alpha.kubernetes.io/hostname"
+
+	// DisableProfilingAnnotation is the annotation that allows disabling profiling for control plane components.
+	// Any components specified in this list will have profiling disabled. Profiling is disabled by default for etcd and konnectivity.
+	// Components this annotation can apply to: kube-scheduler, kube-controller-manager, kube-apiserver.
+	DisableProfilingAnnotation = "hypershift.openshift.io/disable-profiling"
 )
 
 // HostedClusterSpec is the desired behavior of a HostedCluster.
@@ -99,6 +104,19 @@ type HostedClusterSpec struct {
 	// behavior of the rollout will be driven by the ControllerAvailabilityPolicy
 	// and InfrastructureAvailabilityPolicy.
 	Release Release `json:"release"`
+
+	// ClusterID uniquely identifies this cluster. This is expected to be
+	// an RFC4122 UUID value (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx in
+	// hexadecimal values).
+	// As with a Kubernetes metadata.uid, this ID uniquely identifies this
+	// cluster in space and time.
+	// This value identifies the cluster in metrics pushed to telemetry and
+	// metrics produced by the control plane operators. If a value is not
+	// specified, an ID is generated. After initial creation, the value is
+	// immutable.
+	// +kubebuilder:validation:Pattern:="[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"
+	// +optional
+	ClusterID string `json:"clusterID,omitempty"`
 
 	// InfraID is a globally unique identifier for the cluster. This identifier
 	// will be used to associate various cloud resources with the HostedCluster
@@ -212,6 +230,12 @@ type HostedClusterSpec struct {
 	// +optional
 	// +immutable
 	ImageContentSources []ImageContentSource `json:"imageContentSources,omitempty"`
+
+	// AdditionalTrustBundle is a reference to a ConfigMap containing a
+	// PEM-encoded X.509 certificate bundle that will be added to the hosted controlplane and nodes
+	//
+	// +optional
+	AdditionalTrustBundle *corev1.LocalObjectReference `json:"additionalTrustBundle,omitempty"`
 
 	// SecretEncryption specifies a Kubernetes secret encryption strategy for the
 	// control plane.
@@ -1044,6 +1068,10 @@ const (
 	// ReconciliationPaused indicates if reconciliation of the hostedcluster is
 	// paused.
 	ReconciliationPaused ConditionType = "ReconciliationPaused"
+
+	// OIDCConfigurationInvalid indicates if an AWS cluster's OIDC condition is
+	// detected as invalid.
+	OIDCConfigurationInvalid ConditionType = "OIDCConfigurationInvalid"
 )
 
 const (
@@ -1078,6 +1106,8 @@ const (
 	UnmanagedEtcdAsExpected          = "UnmanagedEtcdAsExpected"
 
 	InsufficientClusterCapabilitiesReason = "InsufficientClusterCapabilities"
+
+	OIDCConfigurationInvalidReason = "OIDCConfigurationInvalid"
 )
 
 // HostedClusterStatus is the latest observed status of a HostedCluster.

@@ -20,6 +20,7 @@ import (
 	"github.com/openshift/hypershift/support/capabilities"
 	fakecapabilities "github.com/openshift/hypershift/support/capabilities/fake"
 	fakereleaseprovider "github.com/openshift/hypershift/support/releaseinfo/fake"
+	"github.com/openshift/hypershift/support/thirdparty/library-go/pkg/image/dockerv1client"
 	"github.com/openshift/hypershift/support/upsert"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -405,7 +406,7 @@ func TestClusterAutoscalerArgs(t *testing.T) {
 			hc := &hyperv1.HostedCluster{}
 			hc.Name = "name"
 			hc.Namespace = "namespace"
-			err := reconcileAutoScalerDeployment(deployment, hc, sa, secret, test.AutoscalerOptions, imageClusterAutoscaler, "availability-prober:latest", false)
+			err := reconcileAutoScalerDeployment(deployment, hc, sa, secret, test.AutoscalerOptions, "clusterAutoscalerImage", "availabilityProberImage", false)
 			if err != nil {
 				t.Error(err)
 			}
@@ -1125,6 +1126,7 @@ func TestHostedClusterWatchesEverythingItCreates(t *testing.T) {
 		ManagementClusterCapabilities: fakecapabilities.NewSupportAllExcept(capabilities.CapabilityConfigOpenshiftIO),
 		createOrUpdate:                func(reconcile.Request) upsert.CreateOrUpdateFN { return ctrl.CreateOrUpdate },
 		ReleaseProvider:               &fakereleaseprovider.FakeReleaseProvider{},
+		ImageMetadataProvider:         &fakeImageMetadataProvider{},
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true), zap.JSONEncoder(func(o *zapcore.EncoderConfig) {
@@ -1132,9 +1134,11 @@ func TestHostedClusterWatchesEverythingItCreates(t *testing.T) {
 	})))
 
 	for _, hc := range hostedClusters {
-		if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: hc.Namespace, Name: hc.Name}}); err != nil {
-			t.Fatalf("Reconcile failed: %v", err)
-		}
+		t.Run(hc.Name, func(t *testing.T) {
+			if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: hc.Namespace, Name: hc.Name}}); err != nil {
+				t.Fatalf("Reconcile failed: %v", err)
+			}
+		})
 	}
 	watchedResources := sets.String{}
 	for _, resource := range r.managedResources() {
@@ -1300,6 +1304,13 @@ func TestValidateConfigAndClusterCapabilities(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "invalid cluster uuid",
+			hostedCluster: &hyperv1.HostedCluster{Spec: hyperv1.HostedClusterSpec{
+				ClusterID: "foobar",
+			}},
+			expectedResult: errors.New(`cannot parse cluster ID "foobar": invalid UUID length: 6`),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1385,4 +1396,68 @@ func TestPauseHostedControlPlane(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultClusterIDsIfNeeded(t *testing.T) {
+	testHC := func(infraID, clusterID string) *hyperv1.HostedCluster {
+		return &hyperv1.HostedCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "fake-cluster",
+				Namespace: "fake-namespace",
+			},
+			Spec: hyperv1.HostedClusterSpec{
+				InfraID:   infraID,
+				ClusterID: clusterID,
+			},
+		}
+	}
+	tests := []struct {
+		name string
+		hc   *hyperv1.HostedCluster
+	}{
+		{
+			name: "generate both",
+			hc:   testHC("", ""),
+		},
+		{
+			name: "generate clusterid",
+			hc:   testHC("fake-infra", ""),
+		},
+		{
+			name: "generate infra-id",
+			hc:   testHC("", "fake-uuid"),
+		},
+		{
+			name: "generate none",
+			hc:   testHC("fake-infra", "fake-uuid"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := &HostedClusterReconciler{
+				Client: fake.NewClientBuilder().WithScheme(api.Scheme).WithObjects(test.hc).Build(),
+			}
+			g := NewGomegaWithT(t)
+			previousInfraID := test.hc.Spec.InfraID
+			previousClusterID := test.hc.Spec.ClusterID
+			err := r.defaultClusterIDsIfNeeded(context.Background(), test.hc)
+			g.Expect(err).ToNot(HaveOccurred())
+			resultHC := &hyperv1.HostedCluster{}
+			r.Client.Get(context.Background(), crclient.ObjectKeyFromObject(test.hc), resultHC)
+			g.Expect(resultHC.Spec.ClusterID).NotTo(BeEmpty())
+			g.Expect(resultHC.Spec.InfraID).NotTo(BeEmpty())
+			if len(previousClusterID) > 0 {
+				g.Expect(resultHC.Spec.ClusterID).To(BeIdenticalTo(previousClusterID))
+			}
+			if len(previousInfraID) > 0 {
+				g.Expect(resultHC.Spec.InfraID).To(BeIdenticalTo(previousInfraID))
+			}
+		})
+	}
+}
+
+type fakeImageMetadataProvider struct{}
+
+func (*fakeImageMetadataProvider) ImageMetadata(ctx context.Context, imageRef string, pullSecret []byte) (*dockerv1client.DockerImageConfig, error) {
+	return &dockerv1client.DockerImageConfig{}, nil
 }

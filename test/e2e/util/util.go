@@ -207,7 +207,7 @@ func WaitForConditionsOnHostedControlPlane(t *testing.T, ctx context.Context, cl
 		cp := &hyperv1.HostedControlPlane{}
 		err = client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: hostedCluster.Name}, cp)
 		if err != nil {
-			t.Errorf("Failed to get hostedcontrolplane: %v", err)
+			t.Logf("Failed to get hostedcontrolplane: %v", err)
 			return false, nil
 		}
 
@@ -229,9 +229,9 @@ func WaitForConditionsOnHostedControlPlane(t *testing.T, ctx context.Context, cl
 		}
 
 		if isAvailable {
-			t.Logf("Waiting for all conditions to be ready: Image: %s, conditions: %v", image, conditions)
 			return true, nil
 		}
+		t.Logf("Waiting for all conditions to be ready: Image: %s, conditions: %v", image, conditions)
 		return false, nil
 	}, ctx.Done())
 	g.Expect(err).NotTo(HaveOccurred(), "failed waiting for image rollout")
@@ -263,6 +263,47 @@ func EnsureNoCrashingPods(t *testing.T, ctx context.Context, client crclient.Cli
 			for _, containerStatus := range pod.Status.ContainerStatuses {
 				if containerStatus.RestartCount > 0 {
 					t.Errorf("Container %s in pod %s has a restartCount > 0 (%d)", containerStatus.Name, pod.Name, containerStatus.RestartCount)
+				}
+			}
+		}
+	})
+}
+
+func EnsureNoPodsWithTooHighPriority(t *testing.T, ctx context.Context, client crclient.Client, hostedCluster *hyperv1.HostedCluster) {
+	// Priority of the etcd priority class, nothing should ever exceed this.
+	const maxAllowedPriority = 100002000
+	t.Run("EnsureNoPodsWithTooHighPriority", func(t *testing.T) {
+		namespace := manifests.HostedControlPlaneNamespace(hostedCluster.Namespace, hostedCluster.Name).Name
+
+		var podList corev1.PodList
+		if err := client.List(ctx, &podList, crclient.InNamespace(namespace)); err != nil {
+			t.Fatalf("failed to list pods in namespace %s: %v", namespace, err)
+		}
+		for _, pod := range podList.Items {
+			if pod.Spec.Priority != nil && *pod.Spec.Priority > maxAllowedPriority {
+				t.Errorf("pod %s with priorityClassName %s has a priority of %d with exceeds the max allowed of %d", pod.Name, pod.Spec.PriorityClassName, *pod.Spec.Priority, maxAllowedPriority)
+			}
+		}
+	})
+}
+
+func EnsureAllContainersHavePullPolicyIfNotPresent(t *testing.T, ctx context.Context, client crclient.Client, hostedCluster *hyperv1.HostedCluster) {
+	t.Run("EnsureAllContainersHavePullPolicyIfNotPresent", func(t *testing.T) {
+		namespace := manifests.HostedControlPlaneNamespace(hostedCluster.Namespace, hostedCluster.Name).Name
+
+		var podList corev1.PodList
+		if err := client.List(ctx, &podList, crclient.InNamespace(namespace)); err != nil {
+			t.Fatalf("failed to list pods in namespace %s: %v", namespace, err)
+		}
+		for _, pod := range podList.Items {
+			for _, initContainer := range pod.Spec.InitContainers {
+				if initContainer.ImagePullPolicy != corev1.PullIfNotPresent {
+					t.Errorf("container %s in pod %s has doesn't have imagePullPolicy %s but %s", initContainer.Name, pod.Name, corev1.PullIfNotPresent, initContainer.ImagePullPolicy)
+				}
+			}
+			for _, container := range pod.Spec.Containers {
+				if container.ImagePullPolicy != corev1.PullIfNotPresent {
+					t.Errorf("container %s in pod %s has doesn't have imagePullPolicy %s but %s", container.Name, pod.Name, corev1.PullIfNotPresent, container.ImagePullPolicy)
 				}
 			}
 		}
@@ -377,12 +418,12 @@ func EnsureAPIBudget(t *testing.T, ctx context.Context, client crclient.Client, 
 			{
 				name:   "control-plane-operator read",
 				query:  fmt.Sprintf(`sum by (pod) (max_over_time(hypershift:controlplane:component_api_requests_total{app="control-plane-operator", method="GET", namespace=~"%s"}[%dm]))`, namespace, clusterAgeMinutes),
-				budget: 800,
+				budget: 1500,
 			},
 			{
 				name:   "control-plane-operator mutate",
 				query:  fmt.Sprintf(`sum by (pod) (max_over_time(hypershift:controlplane:component_api_requests_total{app="control-plane-operator", method!="GET", namespace=~"%s"}[%dm]))`, namespace, clusterAgeMinutes),
-				budget: 400,
+				budget: 600,
 			},
 			{
 				name:   "control-plane-operator no 404 deletes",
@@ -401,7 +442,7 @@ func EnsureAPIBudget(t *testing.T, ctx context.Context, client crclient.Client, 
 			{
 				name:   "hypershift-operator mutate",
 				query:  `sum(hypershift:operator:component_api_requests_total{method!="GET"})`,
-				budget: 2000,
+				budget: 3000,
 			},
 			{
 				name:   "hypershift-operator no 404 deletes",

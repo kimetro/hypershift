@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/kas"
@@ -51,7 +52,7 @@ func ReconcileCatalogOperatorDeployment(deployment *appsv1.Deployment, ownerRef 
 			deployment.Spec.Template.Spec.Containers[i].Image = olmImage
 		case "socks5-proxy":
 			deployment.Spec.Template.Spec.Containers[i].Image = socks5ProxyImage
-			deployment.Spec.Template.Spec.Containers[i].ImagePullPolicy = corev1.PullAlways
+			deployment.Spec.Template.Spec.Containers[i].ImagePullPolicy = corev1.PullIfNotPresent
 			deployment.Spec.Template.Spec.Containers[i].Resources.Requests = corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("10m"),
 				corev1.ResourceMemory: resource.MustParse("15Mi"),
@@ -71,7 +72,12 @@ func ReconcileCatalogOperatorDeployment(deployment *appsv1.Deployment, ownerRef 
 		}
 	}
 	dc.ApplyTo(deployment)
-	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, apiPort), availabilityProberImage, &deployment.Spec.Template.Spec)
+	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, apiPort), availabilityProberImage, &deployment.Spec.Template.Spec, func(o *util.AvailabilityProberOpts) {
+		o.KubeconfigVolumeName = "kubeconfig"
+		o.RequiredAPIs = []schema.GroupVersionKind{
+			{Group: "operators.coreos.com", Version: "v1alpha1", Kind: "CatalogSource"},
+		}
+	})
 	return nil
 }
 
@@ -99,7 +105,7 @@ func ReconcileOLMOperatorDeployment(deployment *appsv1.Deployment, ownerRef conf
 			deployment.Spec.Template.Spec.Containers[i].Image = olmImage
 		case "socks5-proxy":
 			deployment.Spec.Template.Spec.Containers[i].Image = socks5ProxyImage
-			deployment.Spec.Template.Spec.Containers[i].ImagePullPolicy = corev1.PullAlways
+			deployment.Spec.Template.Spec.Containers[i].ImagePullPolicy = corev1.PullIfNotPresent
 			deployment.Spec.Template.Spec.Containers[i].Resources.Requests = corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("10m"),
 				corev1.ResourceMemory: resource.MustParse("15Mi"),
@@ -115,11 +121,19 @@ func ReconcileOLMOperatorDeployment(deployment *appsv1.Deployment, ownerRef conf
 		}
 	}
 	dc.ApplyTo(deployment)
-	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, apiPort), availabilityProberImage, &deployment.Spec.Template.Spec)
+	util.AvailabilityProber(kas.InClusterKASReadyURL(deployment.Namespace, apiPort), availabilityProberImage, &deployment.Spec.Template.Spec, func(o *util.AvailabilityProberOpts) {
+		o.KubeconfigVolumeName = "kubeconfig"
+		o.RequiredAPIs = []schema.GroupVersionKind{
+			{Group: "operators.coreos.com", Version: "v1alpha1", Kind: "CatalogSource"},
+			{Group: "operators.coreos.com", Version: "v1alpha1", Kind: "Subscription"},
+			{Group: "operators.coreos.com", Version: "v2", Kind: "OperatorCondition"},
+			{Group: "operators.coreos.com", Version: "v1", Kind: "OperatorGroup"},
+		}
+	})
 	return nil
 }
 
-func ReconcileOLMOperatorServiceMonitor(sm *prometheusoperatorv1.ServiceMonitor, ownerRef config.OwnerRef) error {
+func ReconcileOLMOperatorServiceMonitor(sm *prometheusoperatorv1.ServiceMonitor, ownerRef config.OwnerRef, clusterID string) error {
 	ownerRef.ApplyTo(sm)
 
 	sm.Spec.Selector.MatchLabels = olmOperatorLabels()
@@ -168,6 +182,8 @@ func ReconcileOLMOperatorServiceMonitor(sm *prometheusoperatorv1.ServiceMonitor,
 			},
 		},
 	}
+
+	util.ApplyClusterIDLabel(&sm.Spec.Endpoints[0], clusterID)
 
 	return nil
 }

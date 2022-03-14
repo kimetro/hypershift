@@ -9,6 +9,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	hyperv1 "github.com/openshift/hypershift/api/v1alpha1"
+	"github.com/openshift/hypershift/control-plane-operator/controllers/hostedcontrolplane/manifests"
 	"github.com/openshift/hypershift/support/config"
 	"github.com/openshift/hypershift/support/globalconfig"
 	"github.com/openshift/hypershift/support/util"
@@ -21,6 +22,8 @@ type KubeSchedulerParams struct {
 	HyperkubeImage          string                `json:"hyperkubeImage"`
 	AvailabilityProberImage string                `json:"availabilityProberImage"`
 	config.DeploymentConfig `json:",inline"`
+	APIServer               *configv1.APIServer `json:"apiServer"`
+	DisableProfiling        bool                `json:"disableProfiling"`
 }
 
 func NewKubeSchedulerParams(ctx context.Context, hcp *hyperv1.HostedControlPlane, images map[string]string, globalConfig globalconfig.GlobalConfig, setDefaultSecurityContext bool) *KubeSchedulerParams {
@@ -29,6 +32,7 @@ func NewKubeSchedulerParams(ctx context.Context, hcp *hyperv1.HostedControlPlane
 		Scheduler:               globalConfig.Scheduler,
 		HyperkubeImage:          images["hyperkube"],
 		AvailabilityProberImage: images[util.AvailabilityProberImageName],
+		APIServer:               globalConfig.APIServer,
 	}
 	params.Scheduling = config.Scheduling{
 		PriorityClass: config.DefaultPriorityClass,
@@ -86,6 +90,7 @@ func NewKubeSchedulerParams(ctx context.Context, hcp *hyperv1.HostedControlPlane
 	}
 
 	params.SetDefaultSecurityContext = setDefaultSecurityContext
+	params.DisableProfiling = util.StringListContains(hcp.Annotations[hyperv1.DisableProfilingAnnotation], manifests.SchedulerDeployment("").Name)
 
 	params.OwnerRef = config.OwnerRefFrom(hcp)
 	return params
@@ -97,6 +102,20 @@ func (p *KubeSchedulerParams) FeatureGates() []string {
 	} else {
 		return config.FeatureGates(&configv1.FeatureGateSelection{FeatureSet: configv1.Default})
 	}
+}
+
+func (p *KubeSchedulerParams) CipherSuites() []string {
+	if p.APIServer != nil {
+		return config.CipherSuites(p.APIServer.Spec.TLSSecurityProfile)
+	}
+	return config.CipherSuites(nil)
+}
+
+func (p *KubeSchedulerParams) MinTLSVersion() string {
+	if p.APIServer != nil {
+		return config.MinTLSVersion(p.APIServer.Spec.TLSSecurityProfile)
+	}
+	return config.MinTLSVersion(nil)
 }
 
 func (p *KubeSchedulerParams) SchedulerPolicy() configv1.ConfigMapNameReference {
