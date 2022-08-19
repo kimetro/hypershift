@@ -1849,6 +1849,7 @@ func (r *HostedClusterReconciler) reconcileIgnitionServer(ctx context.Context, c
 							Name: "serving-cert",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
+									DefaultMode: k8sutilspointer.Int32Ptr(416),
 									SecretName: servingCertSecret.Name,
 								},
 							},
@@ -2887,6 +2888,7 @@ func reconcileAutoScalerDeployment(deployment *appsv1.Deployment, hc *hyperv1.Ho
 						Name: "target-kubeconfig",
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
+								DefaultMode: k8sutilspointer.Int32Ptr(416),
 								SecretName: kubeConfigSecret.Name,
 								Items: []corev1.KeyToPath{
 									{
@@ -3739,6 +3741,7 @@ func reconcileMachineApproverDeployment(deployment *appsv1.Deployment, hc *hyper
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: kubeconfigSecretName,
+								DefaultMode: k8sutilspointer.Int32Ptr(416),
 							},
 						},
 					},

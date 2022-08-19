@@ -139,6 +139,7 @@ func konnectivityVolumeServerCerts() *corev1.Volume {
 func buildKonnectivityVolumeServerCerts(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.KonnectivityServerSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -151,6 +152,7 @@ func konnectivityVolumeClusterCerts() *corev1.Volume {
 func buildKonnectivityVolumeClusterCerts(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.KonnectivityClusterSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -326,6 +328,7 @@ func konnectivityVolumeAgentCerts() *corev1.Volume {
 func buildKonnectivityVolumeAgentCerts(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
 		SecretName: manifests.KonnectivityAgentSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 

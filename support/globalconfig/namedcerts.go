@@ -4,6 +4,7 @@ import (
 	"fmt"
 	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 )
 
 func ApplyNamedCertificateMounts(containerName string, mountPrefix string, certs []configv1.APIServerNamedServingCert, spec *corev1.PodSpec) {
@@ -24,6 +25,7 @@ func ApplyNamedCertificateMounts(containerName string, mountPrefix string, certs
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: namedCert.ServingCertificate.Name,
+					DefaultMode: pointer.Int32Ptr(416),
 				},
 			},
 		})

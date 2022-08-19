@@ -409,6 +409,7 @@ cat /tmp/custom-config/base64CompressedConfig | base64 -d | gunzip --force --std
 					Name: "kubeconfig",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
+							DefaultMode: k8sutilspointer.Int32Ptr(416),
 							SecretName: "bootstrap-kubeconfig",
 						},
 					},
@@ -417,6 +418,7 @@ cat /tmp/custom-config/base64CompressedConfig | base64 -d | gunzip --force --std
 					Name: "mcs-tls",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
+							DefaultMode: k8sutilspointer.Int32Ptr(416),
 							SecretName: "mcs-crt",
 						},
 					},

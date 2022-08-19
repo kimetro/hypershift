@@ -156,6 +156,7 @@ func schedulerVolumeKubeconfig() *corev1.Volume {
 
 func buildSchedulerVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
 	}
 }
