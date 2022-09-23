@@ -3741,7 +3741,7 @@ func reconcileMachineApproverDeployment(deployment *appsv1.Deployment, hc *hyper
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: kubeconfigSecretName,
-								DefaultMode: pointer.Int32Ptr(416),
+								DefaultMode: k8sutilspointer.Int32Ptr(416),
 							},
 						},
 					},
