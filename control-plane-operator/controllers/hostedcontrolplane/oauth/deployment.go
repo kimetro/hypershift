@@ -162,7 +162,7 @@ func oauthVolumeKubeconfig() *corev1.Volume {
 
 func buildOAuthVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		DefaultMode: utilpointer.Int32Ptr(416),
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName:  manifests.KASServiceKubeconfigSecret("").Name,
 	}
 }
@@ -174,7 +174,7 @@ func oauthVolumeServingCert() *corev1.Volume {
 
 func buildOAuthVolumeServingCert(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		DefaultMode: utilpointer.Int32Ptr(416),
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName:  manifests.OpenShiftOAuthServerCert("").Name,
 	}
 }
@@ -185,7 +185,7 @@ func oauthVolumeSessionSecret() *corev1.Volume {
 }
 func buildOAuthVolumeSessionSecret(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		DefaultMode: utilpointer.Int32Ptr(416),
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName:  manifests.OAuthServerServiceSessionSecret("").Name,
 	}
 }
@@ -197,7 +197,7 @@ func oauthVolumeErrorTemplate() *corev1.Volume {
 
 func buildOAuthVolumeErrorTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		DefaultMode: utilpointer.Int32Ptr(416),
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName:  manifests.OAuthServerDefaultErrorTemplateSecret("").Name,
 	}
 }
@@ -210,7 +210,7 @@ func oauthVolumeLoginTemplate() *corev1.Volume {
 
 func buildOAuthVolumeLoginTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		DefaultMode: utilpointer.Int32Ptr(416),
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName:  manifests.OAuthServerDefaultLoginTemplateSecret("").Name,
 	}
 }
@@ -223,7 +223,7 @@ func oauthVolumeProvidersTemplate() *corev1.Volume {
 
 func buildOAuthVolumeProvidersTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		DefaultMode: utilpointer.Int32Ptr(416),
+		DefaultMode: pointer.Int32Ptr(416),
 		SecretName:  manifests.OAuthServerDefaultProviderSelectionTemplateSecret("").Name,
 	}
 }
