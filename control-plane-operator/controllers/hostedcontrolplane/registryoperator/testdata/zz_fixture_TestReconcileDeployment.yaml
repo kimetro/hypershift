@@ -191,6 +191,7 @@ spec:
           secretName: cluster-image-registry-operator
       - name: kubeconfig
         secret:
+          defaultMode: 416
           secretName: service-network-admin-kubeconfig
       - name: ca-bundle
         secret:

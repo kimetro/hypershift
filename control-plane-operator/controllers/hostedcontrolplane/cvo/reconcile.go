@@ -386,6 +386,7 @@ func buildCVOVolumeUpdatePayloads(v *corev1.Volume) {
 func buildCVOVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{}
 	v.Secret.SecretName = manifests.KASServiceKubeconfigSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 func buildCVOVolumePayload(v *corev1.Volume) {
