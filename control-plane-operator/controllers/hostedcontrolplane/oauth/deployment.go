@@ -162,7 +162,8 @@ func oauthVolumeKubeconfig() *corev1.Volume {
 
 func buildOAuthVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
+		DefaultMode: utilpointer.Int32Ptr(416),
+		SecretName:  manifests.KASServiceKubeconfigSecret("").Name,
 	}
 }
 func oauthVolumeServingCert() *corev1.Volume {
@@ -173,7 +174,8 @@ func oauthVolumeServingCert() *corev1.Volume {
 
 func buildOAuthVolumeServingCert(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.OpenShiftOAuthServerCert("").Name,
+		DefaultMode: utilpointer.Int32Ptr(416),
+		SecretName:  manifests.OpenShiftOAuthServerCert("").Name,
 	}
 }
 func oauthVolumeSessionSecret() *corev1.Volume {
@@ -183,7 +185,8 @@ func oauthVolumeSessionSecret() *corev1.Volume {
 }
 func buildOAuthVolumeSessionSecret(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.OAuthServerServiceSessionSecret("").Name,
+		DefaultMode: utilpointer.Int32Ptr(416),
+		SecretName:  manifests.OAuthServerServiceSessionSecret("").Name,
 	}
 }
 func oauthVolumeErrorTemplate() *corev1.Volume {
@@ -194,7 +197,8 @@ func oauthVolumeErrorTemplate() *corev1.Volume {
 
 func buildOAuthVolumeErrorTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.OAuthServerDefaultErrorTemplateSecret("").Name,
+		DefaultMode: utilpointer.Int32Ptr(416),
+		SecretName:  manifests.OAuthServerDefaultErrorTemplateSecret("").Name,
 	}
 }
 
@@ -206,7 +210,8 @@ func oauthVolumeLoginTemplate() *corev1.Volume {
 
 func buildOAuthVolumeLoginTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.OAuthServerDefaultLoginTemplateSecret("").Name,
+		DefaultMode: utilpointer.Int32Ptr(416),
+		SecretName:  manifests.OAuthServerDefaultLoginTemplateSecret("").Name,
 	}
 }
 
@@ -218,6 +223,7 @@ func oauthVolumeProvidersTemplate() *corev1.Volume {
 
 func buildOAuthVolumeProvidersTemplate(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.OAuthServerDefaultProviderSelectionTemplateSecret("").Name,
+		DefaultMode: utilpointer.Int32Ptr(416),
+		SecretName:  manifests.OAuthServerDefaultProviderSelectionTemplateSecret("").Name,
 	}
 }

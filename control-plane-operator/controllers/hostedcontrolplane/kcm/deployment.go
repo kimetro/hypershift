@@ -191,7 +191,8 @@ func kcmVolumeServiceSigner() *corev1.Volume {
 
 func buildKCMVolumeServiceSigner(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.ServiceAccountSigningKeySecret("").Name,
+		SecretName:  manifests.ServiceAccountSigningKeySecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -213,7 +214,8 @@ func kcmVolumeClusterSigner() *corev1.Volume {
 
 func buildKCMVolumeClusterSigner(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.ClusterSignerCASecret("").Name,
+		SecretName:  manifests.ClusterSignerCASecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -225,7 +227,8 @@ func kcmVolumeKubeconfig() *corev1.Volume {
 
 func buildKCMVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
+		SecretName:  manifests.KASServiceKubeconfigSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 
@@ -262,6 +265,7 @@ func buildKCMVolumeServerCert(v *corev1.Volume) {
 	}
 	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 	v.Secret.SecretName = manifests.KCMServerCertSecret("").Name
+	v.Secret.DefaultMode = pointer.Int32Ptr(416)
 }
 
 type serviceCAVolumeBuilder string

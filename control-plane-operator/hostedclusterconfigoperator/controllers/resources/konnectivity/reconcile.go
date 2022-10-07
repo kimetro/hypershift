@@ -118,7 +118,8 @@ func buildKonnectivityWorkerAgentContainer(image, host string, port int32) func(
 
 func buildKonnectivityVolumeWorkerAgentCerts(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.KonnectivityAgentSecret("").Name,
+		SecretName:  manifests.KonnectivityAgentSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }
 

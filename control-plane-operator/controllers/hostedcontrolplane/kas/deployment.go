@@ -676,7 +676,8 @@ func applyNamedCertificateMounts(certs []configv1.APIServerNamedServingCert, spe
 			Name: volumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: namedCert.ServingCertificate.Name,
+					SecretName:  namedCert.ServingCertificate.Name,
+					DefaultMode: pointer.Int32Ptr(416),
 				},
 			},
 		})
@@ -751,6 +752,7 @@ func kasVolumeKubeconfig() *corev1.Volume {
 
 func buildKASVolumeKubeconfig(v *corev1.Volume) {
 	v.Secret = &corev1.SecretVolumeSource{
-		SecretName: manifests.KASServiceKubeconfigSecret("").Name,
+		SecretName:  manifests.KASServiceKubeconfigSecret("").Name,
+		DefaultMode: pointer.Int32Ptr(416),
 	}
 }

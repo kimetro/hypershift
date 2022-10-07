@@ -121,7 +121,9 @@ spec:
           secretName: packageserver-cert
       - name: kubeconfig
         secret:
+          defaultMode: 416
           secretName: service-network-admin-kubeconfig
       - name: oas-konnectivity-proxy-cert
         secret:
+          defaultMode: 416
           secretName: konnectivity-client
